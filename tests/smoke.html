@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Поток — смоук-тесты</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, Consolas, monospace; margin: 0; padding: 20px;
+         background: #f0f0f0; color: #000; }
+  pre { white-space: pre-wrap; }
+  .note { background: #fff; border-radius: 12px; padding: 12px 16px; margin: 0 0 16px; }
+</style></head>
+<body>
+<p class="note">
+  Тесты идут в отдельной базе <b>potok-tests</b> — рабочие данные не трогаются.
+  Стартовый набор берётся из <b>data/moneyflow-demo.csv</b>.
+</p>
+<pre id="out">запуск…</pre>
+
+<script>
+  // Должно выполниться до модулей: имя базы читается при первом импорте.
+  window.__POTOK_DB_NAME__ = 'potok-tests';
+</script>
+
+<script type="module">
+window.__smoke = (async () => {
+  const lines = [];
+  let failed = 0;
+  const log = (s) => lines.push(s);
+  const check = (name, fn) => {
+    try {
+      const r = fn();
+      if (r === false) { failed++; log(`FAIL ${name}`); }
+      else log(`ok   ${name}${r && r !== true ? ' :: ' + r : ''}`);
+    } catch (e) { failed++; log(`FAIL ${name} :: ${e.name}: ${e.message}`); }
+  };
+  const checkAsync = async (name, fn) => {
+    try {
+      const r = await fn();
+      if (r === false) { failed++; log(`FAIL ${name}`); }
+      else log(`ok   ${name}${r && r !== true ? ' :: ' + r : ''}`);
+    } catch (e) { failed++; log(`FAIL ${name} :: ${e.name}: ${e.message}`); }
+  };
+
+  const money = await import('../js/core/money.js');
+  const schema = await import('../js/core/schema.js');
+  const store = await import('../js/core/store.js');
+  const imp = await import('../js/core/import-moneyflow.js');
+
+  const NBSP = ' ';
+  const THIN = ' ';
+
+  // ------------------------------------------------------------- деньги
+  check('минорные единицы без ошибки float', () =>
+    money.toMinor(0.1 + 0.2, 'RUB') === 30 ? true : `got ${money.toMinor(0.1 + 0.2, 'RUB')}`);
+  check('иена без дробной части', () =>
+    money.toMinor(1234, 'JPY') === 1234 ? true : `got ${money.toMinor(1234, 'JPY')}`);
+  check('разбор «1 234,56»', () =>
+    money.parseAmount('1 234,56') === 1234.56 ? true : `got ${money.parseAmount('1 234,56')}`);
+
+  check('формат как в оригинале', () => {
+    const got = money.formatMoney(79189145, 'RUB');
+    const want = `791${THIN}891,45${NBSP}₽`;
+    return got === want ? got : `got «${got}» want «${want}»`;
+  });
+  check('плюс отделён пробелом', () => {
+    const got = money.formatMoney(34462353, 'RUB', { sign: 'always' });
+    return got === `+${NBSP}344${THIN}623,53${NBSP}₽` ? got : `got «${got}»`;
+  });
+  check('минус настоящий, не дефис', () => {
+    const got = money.formatMoney(-90498, 'RUB');
+    return got === `−${NBSP}904,98${NBSP}₽` ? got : `got «${got}»`;
+  });
+  check('процент как «24,9 %»', () =>
+    money.formatPercent(0.249) === `24,9${NBSP}%` ? true : `got «${money.formatPercent(0.249)}»`);
+
+  check('пересчёт по курсу', () => {
+    const rates = { RUB: 1, USD: 83 };
+    const got = money.convert(10000, 'USD', 'RUB', rates);   // 100,00 $
+    return got === 830000 ? `${got} коп.` : `got ${got}`;
+  });
+  check('без курса не выдумываем число', () =>
+    money.convert(10000, 'XYZ', 'RUB', { RUB: 1 }) === null);
+  check('курс из сумм перевода', () => {
+    const rate = money.impliedRate(-1740030, 'RUB', 20949, 'USD');
+    return Math.abs(rate - 0.01204) < 0.0001 ? rate.toFixed(5) : `got ${rate}`;
+  });
+
+  // -------------------------------------------------------- разбор CSV
+  const csv = await fetch('../data/moneyflow-demo.csv').then((r) => {
+    if (!r.ok) throw new Error('нет data/moneyflow-demo.csv');
+    return r.text();
+  });
+
+  check('файл опознан как экспорт Money Flow', () => imp.looksLikeMoneyFlow(csv));
+
+  const built = imp.buildImport(csv, { baseCurrency: 'RUB' });
+  const rep = built.report;
+
+  check('строк разобрано', () => rep.rows === 374 ? `${rep.rows}` : `got ${rep.rows}`);
+  check('типы операций', () =>
+    `расходы ${rep.expense}, доходы ${rep.income}, возвраты ${rep.refund}, переводы ${rep.transfer}`);
+  check('переводов 32', () => rep.transfer === 32 ? true : `got ${rep.transfer}`);
+  check('валюты найдены', () => rep.currencies.sort().join(',') === 'EUR,RUB,USD'
+    ? rep.currencies.join(',') : `got ${rep.currencies}`);
+  check('счетов 9', () => built.accounts.length === 9
+    ? built.accounts.map((a) => `${a.name}(${a.currency})`).join(', ')
+    : `got ${built.accounts.length}`);
+  check('контрагентов 9', () => built.payees.length === 9 ? true : `got ${built.payees.length}`);
+  check('меток 3', () => built.tags.length === 3
+    ? built.tags.map((t) => t.name).join(', ') : `got ${built.tags.length}`);
+  check('мест 9', () => built.places.length === 9 ? true : `got ${built.places.length}`);
+
+  check('цели распознаны как счета-копилки', () => {
+    const goals = built.accounts.filter((a) => a.kind === 'goal').map((a) => a.name);
+    return goals.length === 2 ? goals.join(', ') : `got ${goals.join(',') || 'нет'}`;
+  });
+  check('группы счетов восстановлены', () =>
+    built.accountGroups.map((g) => g.name).sort().join(' | '));
+  check('дерево категорий построено', () => {
+    const roots = built.categories.filter((c) => c.parentId === null).length;
+    const leaves = built.categories.filter((c) => c.parentId !== null).length;
+    return `верхний уровень ${roots}, подкатегорий ${leaves}`;
+  });
+  check('нераспознанные категории', () =>
+    rep.unknownCategories.length ? rep.unknownCategories.join(', ') : 'нет — всё разложено по дереву');
+
+  // --------------------------------- сверка с числами на экране оригинала
+  // Эталон снят с кадра «Счета» записи Money Flow. Экспорт не содержит
+  // начальных остатков, поэтому сначала выводим их из сегодняшних.
+  const REFERENCE = {
+    'Наличные': 11199825, 'Наличные (USD)': 57974, 'Наличные (EUR)': 25881,
+    'Зелёная карта': 81306588, 'Жёлтая карта': 5622760, 'Красная карта': 4320530,
+    'Фиолетовая карта': 12593599, 'На путешествие': 50825301, 'На домик': 35251160,
+  };
+
+  const seeded = imp.deriveOpeningBalances(built, REFERENCE);
+  check('начальные остатки выведены', () =>
+    `${seeded.openingBalances.length} счетов, ненулевых ${seeded.openingBalances.filter((o) => o.opening !== 0).length}`);
+
+  // ------------------------------------------------------ загрузка в базу
+  await store.wipe();
+  await store.bulkLoad({
+    ...seeded,
+    settings: { ...schema.DEFAULT_SETTINGS, baseCurrency: 'RUB', rates: { RUB: 1, USD: 83.4, EUR: 95 } },
+  });
+
+  check('все балансы сошлись с оригиналом', () => {
+    const wrong = [];
+    for (const [name, want] of Object.entries(REFERENCE)) {
+      const account = store.state.accounts.find((a) => a.name === name);
+      const got = store.accountBalance(account.id);
+      if (got !== want) wrong.push(`${name}: ${got} ≠ ${want}`);
+    }
+    return wrong.length === 0 ? '9 из 9 до копейки' : wrong.join('; ');
+  });
+
+  check('операции в базе', () => store.state.transactions.length === 374
+    ? '374' : `got ${store.state.transactions.length}`);
+  check('у операций есть время, не только дата', () => {
+    const hours = new Set(store.state.transactions.map((t) => new Date(t.at).getHours()));
+    return hours.size > 12 ? `${hours.size} различных часов` : `got ${hours.size}`;
+  });
+
+  check('баланс счёта считается в его валюте', () => {
+    const usd = store.state.accounts.find((a) => a.name === 'Наличные (USD)');
+    const balance = store.accountBalance(usd.id);
+    return `${money.formatMoney(balance, 'USD')}`;
+  });
+  check('общий баланс в базовой валюте', () => {
+    const total = store.totalBalance();
+    return total === null ? 'не хватает курса' : money.formatMoney(total, 'RUB');
+  });
+  check('курсов хватает на все счета', () =>
+    store.missingRates().length === 0 ? true : `нет курса: ${store.missingRates().join(', ')}`);
+
+  check('перевод не попадает в доходы и расходы', () => {
+    const t = store.totals();
+    const transfersInside = store.selectTransactions().some((x) => x.type === 'transfer');
+    return !transfersInside ? `доход ${money.formatMoney(t.income, 'RUB')}, расход ${money.formatMoney(t.expense, 'RUB')}`
+      : 'переводы просочились';
+  });
+  check('переводы видны, если включить настройку', () => {
+    const withTransfers = store.selectTransactions({ includeTransfers: true });
+    return withTransfers.filter((x) => x.type === 'transfer').length === 32;
+  });
+
+  check('разрез по категориям сворачивается к верхнему уровню', () => {
+    const rows = store.breakdown('category', { kind: 'expense' });
+    const named = rows.slice(0, 5).map((r) => {
+      const c = store.categoryById(r.key);
+      return `${c ? c.name : 'без категории'} ${money.formatPercent(r.share, 1)}`;
+    });
+    return named.join(', ');
+  });
+  check('разрез по местам работает', () => {
+    const rows = store.breakdown('place', { kind: 'expense' });
+    const top = store.placeById(rows[0].key);
+    return top ? `${top.name} — ${money.formatMoney(rows[0].amount, 'RUB')}` : 'нет мест';
+  });
+  check('разрез по контрагентам работает', () => {
+    const rows = store.breakdown('payee', { kind: 'expense' });
+    return `${rows.length} контрагентов, лидер ${store.payeeById(rows[0].key)?.name}`;
+  });
+  check('разрез по меткам не обязан сходиться с общей суммой', () => {
+    const rows = store.breakdown('tag', { kind: 'expense' });
+    return `${rows.length} строк (включая «без метки»)`;
+  });
+
+  // ------------------------------------------------- корректировка остатка
+  await checkAsync('корректировка доводит баланс до нужного', async () => {
+    const cash = store.state.accounts.find((a) => a.name === 'Наличные');
+    const target = store.accountBalance(cash.id) + 500000;
+    await store.adjustBalance(cash.id, target);
+    const now = store.accountBalance(cash.id);
+    return now === target ? money.formatMoney(now, 'RUB') : `got ${now}, want ${target}`;
+  });
+  check('корректировка не искажает статистику', () => {
+    const visible = store.selectTransactions().some((t) => t.isAdjustment);
+    return !visible ? 'скрыта, как в оригинале' : 'корректировка попала в отчёт';
+  });
+  check('корректировку видно, если включить настройку', () =>
+    store.selectTransactions({ includeAdjustments: true }).some((t) => t.isAdjustment));
+
+  lines.push(failed ? `\n=== ПРОВАЛЕНО: ${failed} ===` : '\n=== ВСЁ ЗЕЛЁНОЕ ===');
+  const report = lines.join('\n');
+  document.getElementById('out').textContent = report;
+  return report;
+})();
+</script>
+</body></html>

@@ -1,0 +1,10 @@
+﻿# Служебное
+.claude/
+.DS_Store
+Thumbs.db
+
+# Тестовые данные из Money Flow — не наши, в репозиторий не кладём
+data/*.csv
+
+__pycache__/
+*.pyc

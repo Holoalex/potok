@@ -1,0 +1,310 @@
+// Доменный слой: состояние, справочники, расчёты. Без единого обращения к DOM —
+// этот файл переезжает в нативное приложение без правок.
+
+import * as db from './db.js';
+import { STORES } from './db.js';
+import { convert, decimalsOf, toMinor } from './money.js';
+import { DEFAULT_SETTINGS, makeTransaction } from './schema.js';
+
+export const state = {
+  accountGroups: [],
+  accounts: [],
+  categories: [],
+  payees: [],
+  tags: [],
+  places: [],
+  transactions: [],
+  budgets: [],
+  settings: { ...DEFAULT_SETTINGS },
+  ready: false,
+};
+
+const listeners = new Set();
+export const subscribe = (fn) => (listeners.add(fn), () => listeners.delete(fn));
+const emit = (event) => listeners.forEach((fn) => fn(event));
+
+// ------------------------------------------------------------ инициализация
+
+export async function init() {
+  const [groups, accounts, categories, payees, tags, places, transactions, budgets, settings] =
+    await Promise.all([
+      db.getAll(STORES.accountGroups), db.getAll(STORES.accounts),
+      db.getAll(STORES.categories), db.getAll(STORES.payees),
+      db.getAll(STORES.tags), db.getAll(STORES.places),
+      db.getAll(STORES.transactions), db.getAll(STORES.budgets),
+      db.getAll(STORES.settings),
+    ]);
+
+  state.accountGroups = groups;
+  state.accounts = accounts;
+  state.categories = categories;
+  state.payees = payees;
+  state.tags = tags;
+  state.places = places;
+  state.transactions = transactions;
+  state.budgets = budgets;
+  state.settings = {
+    ...DEFAULT_SETTINGS,
+    ...Object.fromEntries(settings.map((r) => [r.key, r.value])),
+  };
+
+  sortTransactions();
+  state.ready = true;
+  emit('init');
+}
+
+const sortTransactions = () =>
+  state.transactions.sort((a, b) => b.at - a.at || b.createdAt - a.createdAt);
+
+// ----------------------------------------------------------------- справки
+
+const byId = (list, id) => list.find((x) => x.id === id) || null;
+
+export const accountById = (id) => byId(state.accounts, id);
+export const categoryById = (id) => byId(state.categories, id);
+export const payeeById = (id) => byId(state.payees, id);
+export const tagById = (id) => byId(state.tags, id);
+export const placeById = (id) => byId(state.places, id);
+export const groupById = (id) => byId(state.accountGroups, id);
+
+export const baseCurrency = () => state.settings.baseCurrency;
+
+/** Дети категории. Верхний уровень — parentId === null. */
+export const childrenOf = (parentId) =>
+  state.categories.filter((c) => c.parentId === parentId).sort(byOrder);
+
+export const topCategories = (type) =>
+  state.categories.filter((c) => c.parentId === null && c.type === type).sort(byOrder);
+
+const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name, 'ru');
+
+/** Категория верхнего уровня для любой категории — по ней группируется отчёт. */
+export function rootCategoryOf(categoryId) {
+  const category = categoryById(categoryId);
+  if (!category) return null;
+  return category.parentId ? categoryById(category.parentId) || category : category;
+}
+
+export const activeAccounts = ({ includeArchived = false } = {}) =>
+  state.accounts.filter((a) => includeArchived || !a.archived).sort(byOrder);
+
+export const accountsOfGroup = (groupId) =>
+  state.accounts.filter((a) => a.groupId === groupId && !a.archived).sort(byOrder);
+
+// ------------------------------------------------------------------ баланс
+
+/** Баланс счёта в его собственной валюте. */
+export function accountBalance(accountId) {
+  const account = accountById(accountId);
+  if (!account) return 0;
+
+  let sum = account.initialBalanceMinor || 0;
+  for (const t of state.transactions) {
+    if (t.type === 'transfer') {
+      if (t.accountId === accountId) sum -= t.amountMinor;
+      if (t.toAccountId === accountId) sum += t.toAmountMinor ?? t.amountMinor;
+      continue;
+    }
+    if (t.accountId !== accountId) continue;
+    if (t.type === 'expense') sum -= t.amountMinor;
+    else sum += t.amountMinor;            // income и refund увеличивают остаток
+  }
+  return sum;
+}
+
+/** Итог по списку счетов в базовой валюте. null — если не хватает курса. */
+export function totalBalance(accounts = activeAccounts()) {
+  const base = baseCurrency();
+  let sum = 0;
+  for (const account of accounts) {
+    if (account.excludeFromTotal) continue;
+    const converted = convert(accountBalance(account.id), account.currency, base, state.settings.rates);
+    if (converted === null) return null;
+    sum += converted;
+  }
+  return sum;
+}
+
+// ------------------------------------------------------------------ выборки
+
+/** Операции за период с учётом настроек «переводы/корректировки как доходы». */
+export function selectTransactions({ from, to, accountIds, includeTransfers, includeAdjustments } = {}) {
+  const withTransfers = includeTransfers ?? state.settings.transfersAsIncomeExpense;
+  const withAdjustments = includeAdjustments ?? state.settings.adjustmentsAsIncomeExpense;
+
+  return state.transactions.filter((t) => {
+    if (from != null && t.at < from) return false;
+    if (to != null && t.at > to) return false;
+    if (!withAdjustments && t.isAdjustment) return false;
+    if (t.type === 'transfer' && !withTransfers) return false;
+    if (accountIds && accountIds.length) {
+      const hit = accountIds.includes(t.accountId) || accountIds.includes(t.toAccountId);
+      if (!hit) return false;
+    }
+    return true;
+  });
+}
+
+/** Сумма операции в базовой валюте. */
+export function inBase(transaction) {
+  return convert(transaction.amountMinor, transaction.currency, baseCurrency(), state.settings.rates);
+}
+
+/**
+ * Доходы и расходы за период. Возврат средств уменьшает расход,
+ * а не увеличивает доход — так же, как в оригинале.
+ */
+export function totals(options = {}) {
+  const rows = selectTransactions(options);
+  let income = 0;
+  let expense = 0;
+  let unconverted = 0;
+
+  for (const t of rows) {
+    if (t.type === 'transfer') continue;
+    const value = inBase(t);
+    if (value === null) { unconverted++; continue; }
+    if (t.type === 'income') income += value;
+    else if (t.type === 'expense') expense += value;
+    else if (t.type === 'refund') expense -= value;
+  }
+  return { income, expense, balance: income - expense, unconverted };
+}
+
+/**
+ * Разрез отчёта. dimension: category | payee | tag | place.
+ * Категории сворачиваются до верхнего уровня — оригинал показывает именно так,
+ * а провал внутрь даёт подкатегории.
+ */
+export function breakdown(dimension, { kind = 'expense', collapseToRoot = true, ...options } = {}) {
+  const rows = selectTransactions(options);
+  const sums = new Map();
+
+  const add = (key, value) => sums.set(key, (sums.get(key) || 0) + value);
+
+  for (const t of rows) {
+    if (t.type === 'transfer') continue;
+    const isExpenseSide = t.type === 'expense' || t.type === 'refund';
+    if (kind === 'expense' && !isExpenseSide) continue;
+    if (kind === 'income' && t.type !== 'income') continue;
+
+    const value = inBase(t);
+    if (value === null) continue;
+    const signed = t.type === 'refund' ? -value : value;
+
+    if (dimension === 'tag') {
+      // Операция с несколькими метками попадает в каждую — сумма по меткам
+      // намеренно не сходится с общей, как и предупреждает оригинал.
+      if (!t.tagIds.length) add(null, signed);
+      else t.tagIds.forEach((tagId) => add(tagId, signed));
+      continue;
+    }
+
+    const key =
+      dimension === 'category'
+        ? (collapseToRoot ? rootCategoryOf(t.categoryId)?.id ?? null : t.categoryId)
+        : dimension === 'payee' ? t.payeeId
+        : dimension === 'place' ? t.placeId
+        : null;
+    add(key, signed);
+  }
+
+  const total = [...sums.values()].reduce((a, b) => a + Math.max(b, 0), 0);
+  return [...sums.entries()]
+    .map(([key, amount]) => ({ key, amount, share: total ? amount / total : 0 }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+// ------------------------------------------------------------------- запись
+
+export async function addTransaction(data) {
+  const record = makeTransaction(data);
+  await db.put(STORES.transactions, record);
+  state.transactions.push(record);
+  sortTransactions();
+  emit('transactions');
+  return record;
+}
+
+export async function updateTransaction(id, patch) {
+  const index = state.transactions.findIndex((t) => t.id === id);
+  if (index === -1) return null;
+  const record = makeTransaction({ ...state.transactions[index], ...patch, updatedAt: Date.now() });
+  await db.put(STORES.transactions, record);
+  state.transactions[index] = record;
+  sortTransactions();
+  emit('transactions');
+  return record;
+}
+
+export async function deleteTransaction(id) {
+  await db.remove(STORES.transactions, id);
+  state.transactions = state.transactions.filter((t) => t.id !== id);
+  emit('transactions');
+}
+
+/** Корректировка остатка: доводим баланс счёта до указанного значения. */
+export async function adjustBalance(accountId, targetMinor, at = Date.now()) {
+  const account = accountById(accountId);
+  if (!account) throw new Error('Счёт не найден');
+
+  const delta = targetMinor - accountBalance(accountId);
+  if (delta === 0) return null;
+
+  return addTransaction({
+    type: delta > 0 ? 'income' : 'expense',
+    isAdjustment: true,
+    at,
+    accountId,
+    amountMinor: Math.abs(delta),
+    currency: account.currency,
+    note: 'Корректировка остатка',
+  });
+}
+
+export async function setSetting(key, value) {
+  state.settings[key] = value;
+  await db.put(STORES.settings, { key, value });
+  emit('settings');
+}
+
+/** Курс валюты к базовой. */
+export async function setRate(code, rate) {
+  const rates = { ...state.settings.rates, [code]: rate };
+  await setSetting('rates', rates);
+}
+
+export const missingRates = () => {
+  const base = baseCurrency();
+  const used = new Set(state.accounts.map((a) => a.currency));
+  return [...used].filter((code) => code !== base && !state.settings.rates[code]);
+};
+
+// ------------------------------------------------------------------ хранение
+
+/** Массовая запись справочников и операций одним заходом — импорт. */
+export async function bulkLoad(payload) {
+  await db.writeBulk({
+    [STORES.accountGroups]: payload.accountGroups || [],
+    [STORES.accounts]: payload.accounts || [],
+    [STORES.categories]: payload.categories || [],
+    [STORES.payees]: payload.payees || [],
+    [STORES.tags]: payload.tags || [],
+    [STORES.places]: payload.places || [],
+    [STORES.transactions]: payload.transactions || [],
+    [STORES.budgets]: payload.budgets || [],
+    [STORES.settings]: Object.entries(payload.settings || {}).map(([key, value]) => ({ key, value })),
+  });
+  await init();
+}
+
+export async function wipe() {
+  await db.clearAll();
+  Object.assign(state, {
+    accountGroups: [], accounts: [], categories: [], payees: [], tags: [],
+    places: [], transactions: [], budgets: [], settings: { ...DEFAULT_SETTINGS },
+  });
+  await init();
+}
+
+export { toMinor, decimalsOf };

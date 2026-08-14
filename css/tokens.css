@@ -1,0 +1,118 @@
+/* =========================================================================
+   Токены. Значения сняты пипеткой с кадров записи экрана Money Flow
+   в исходном разрешении 1284×2778 — не подобраны на глаз.
+
+   Главное отличие от привычных приложений учёта: красно-зелёной схемы нет.
+   Все положительные суммы — акцентный фиолетовый, расходы — обычный текст.
+   ========================================================================= */
+
+:root {
+  /* Акцент один на обе темы — в оригинале он не меняется. */
+  --accent: #7737e6;
+  --accent-pressed: #6a2fd0;
+
+  /* Цвета категорий с диаграмм оригинала. */
+  --cat-1:  #1793df;  --cat-2:  #30a044;  --cat-3:  #1cb786;
+  --cat-4:  #fd492d;  --cat-5:  #fc1037;  --cat-6:  #f45f8e;
+  --cat-7:  #b15db6;  --cat-8:  #ffc463;  --cat-9:  #d8a67b;
+  --cat-10: #c5bfa1;  --cat-11: #7737e6;  --cat-12: #8b8b8b;
+
+  --radius-card: 20px;
+  --radius-field: 14px;
+  --radius-pill: 999px;
+
+  --gap: 12px;
+  --pad: 16px;
+  --tabbar-height: 56px;
+
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+
+  /* Шкала снята с кадров: крупная сумма ~34pt, заголовок ~17pt, подпись ~13pt. */
+  --size-amount: 34px;
+  --size-title: 17px;
+  --size-body: 15px;
+  --size-caption: 13px;
+  --size-micro: 11px;
+}
+
+/* ------------------------------------------------------------ светлая тема */
+:root,
+:root[data-theme='light'] {
+  --bg: #f0f0f0;
+  --surface: #ffffff;
+  --surface-2: #f0f0f0;
+  --separator: #eaeaea;
+  --text: #000000;
+  --text-2: #757575;
+  --text-3: #b6b6b6;
+
+  --amount-positive: var(--accent);
+  --amount-negative: var(--text);
+  --track: #eaeaea;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* --------------------------------------------------------------- тёмная */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='black']):not([data-theme='pureBlack']) {
+    --bg: #1d1d1d;
+    --surface: #292929;
+    --surface-2: #242424;
+    --separator: #343337;
+    --text: #dcdcdc;
+    --text-2: #8b8b8b;
+    --text-3: #5a5a5a;
+
+    --amount-positive: #9b6bf0;
+    --amount-negative: var(--text);
+    --track: #343337;
+    --shadow: none;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #1d1d1d;
+  --surface: #292929;
+  --surface-2: #242424;
+  --separator: #343337;
+  --text: #dcdcdc;
+  --text-2: #8b8b8b;
+  --text-3: #5a5a5a;
+
+  --amount-positive: #9b6bf0;
+  --amount-negative: var(--text);
+  --track: #343337;
+  --shadow: none;
+}
+
+/* Чёрная и чистая чёрная — в оригинале это отдельные темы, не оттенки тёмной. */
+:root[data-theme='black'] {
+  --bg: #0d0d0d;
+  --surface: #1a1a1a;
+  --surface-2: #141414;
+  --separator: #2a2a2a;
+  --text: #dcdcdc;
+  --text-2: #8b8b8b;
+  --text-3: #5a5a5a;
+
+  --amount-positive: #9b6bf0;
+  --amount-negative: var(--text);
+  --track: #2a2a2a;
+  --shadow: none;
+}
+
+:root[data-theme='pureBlack'] {
+  --bg: #000000;
+  --surface: #0d0d0d;
+  --surface-2: #000000;
+  --separator: #222222;
+  --text: #e6e6e6;
+  --text-2: #8b8b8b;
+  --text-3: #5a5a5a;
+
+  --amount-positive: #9b6bf0;
+  --amount-negative: var(--text);
+  --track: #222222;
+  --shadow: none;
+}
