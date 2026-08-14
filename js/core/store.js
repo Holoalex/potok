@@ -215,6 +215,73 @@ export function breakdown(dimension, { kind = 'expense', collapseToRoot = true, 
     .sort((a, b) => b.amount - a.amount);
 }
 
+/** Разрез внутри одной категории верхнего уровня — для проваливания в отчёте. */
+export function breakdownWithin(rootId, { kind = 'expense', ...options } = {}) {
+  const rows = selectTransactions(options);
+  const sums = new Map();
+
+  for (const t of rows) {
+    if (t.type === 'transfer') continue;
+    const isExpenseSide = t.type === 'expense' || t.type === 'refund';
+    if (kind === 'expense' && !isExpenseSide) continue;
+    if (kind === 'income' && t.type !== 'income') continue;
+    if (rootCategoryOf(t.categoryId)?.id !== rootId) continue;
+
+    const value = inBase(t);
+    if (value === null) continue;
+    const signed = t.type === 'refund' ? -value : value;
+    sums.set(t.categoryId, (sums.get(t.categoryId) || 0) + signed);
+  }
+
+  const total = [...sums.values()].reduce((a, b) => a + Math.max(b, 0), 0);
+  return [...sums.entries()]
+    .map(([key, amount]) => ({ key, amount, share: total ? amount / total : 0 }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+/**
+ * Ряд по времени для столбчатой диаграммы: суммы, разложенные по корзинам
+ * и по категориям внутри корзины — столбцы в оригинале сегментированы цветами.
+ */
+export function timeSeries({ from, to, bucket = 'day', kind = 'expense', ...options }) {
+  const rows = selectTransactions({ from, to, ...options });
+  const buckets = new Map();
+
+  const keyOf = (ms) => {
+    const d = new Date(ms);
+    if (bucket === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (bucket === 'week') {
+      const monday = new Date(d);
+      monday.setHours(0, 0, 0, 0);
+      monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+      return `w${monday.getTime()}`;
+    }
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  for (const t of rows) {
+    if (t.type === 'transfer') continue;
+    const isExpenseSide = t.type === 'expense' || t.type === 'refund';
+    if (kind === 'expense' && !isExpenseSide) continue;
+    if (kind === 'income' && t.type !== 'income') continue;
+
+    const value = inBase(t);
+    if (value === null) continue;
+    const signed = t.type === 'refund' ? -value : value;
+
+    const key = keyOf(t.at);
+    if (!buckets.has(key)) buckets.set(key, { key, at: t.at, total: 0, parts: new Map() });
+    const cell = buckets.get(key);
+    cell.total += signed;
+    cell.at = Math.min(cell.at, t.at);
+
+    const rootId = rootCategoryOf(t.categoryId)?.id ?? null;
+    cell.parts.set(rootId, (cell.parts.get(rootId) || 0) + signed);
+  }
+
+  return [...buckets.values()].sort((a, b) => a.at - b.at);
+}
+
 // ------------------------------------------------------------------- запись
 
 export async function addTransaction(data) {

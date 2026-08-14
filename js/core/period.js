@@ -106,6 +106,16 @@ export const dayKey = (ms) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+/** Номер недели по ISO — так подписаны недели в отчёте оригинала. */
+export function weekNumber(ms) {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const firstThursday = new Date(d.getFullYear(), 0, 4);
+  firstThursday.setDate(firstThursday.getDate() + 3 - ((firstThursday.getDay() + 6) % 7));
+  return 1 + Math.round((d - firstThursday) / (7 * 86_400_000));
+}
+
 export const monthKeyOf = (ms) => {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

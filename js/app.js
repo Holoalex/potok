@@ -4,12 +4,13 @@ import * as store from './core/store.js';
 import { h, render } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { renderOperations } from './ui/operations.js';
+import { renderReport } from './ui/report.js';
 import { renderSettings } from './ui/settings.js';
 import { applyTheme } from './ui/theme.js';
 
 const TABS = [
   { path: '/', label: 'Операции', glyph: 'list', render: renderOperations },
-  { path: '/report', label: 'Отчёт', glyph: 'chart-pie', render: stub('Отчёт') },
+  { path: '/report', label: 'Отчёт', glyph: 'chart-pie', render: renderReport },
   { path: '/plan', label: 'План', glyph: 'chart-column', render: stub('План') },
   { path: '/settings', label: 'Настройки', glyph: 'settings', render: renderSettings },
 ];

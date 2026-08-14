@@ -71,11 +71,12 @@ function periodBar(refresh) {
     h('button', { class: 'period-chip', type: 'button' },
       h('span', {}, 'Период'),
       icon('chevron-right', { size: 14 })),
-    PRESETS.map((preset) => h('button', {
-      class: 'period-item' + (view.period.preset === preset.id ? ' is-active' : ''),
-      type: 'button',
-      onClick: () => { view.period = { kind: 'preset', preset: preset.id }; refresh(); },
-    }, preset.label)));
+    h('div', { class: 'period-bar__scroll' },
+      PRESETS.map((preset) => h('button', {
+        class: 'period-item' + (view.period.preset === preset.id ? ' is-active' : ''),
+        type: 'button',
+        onClick: () => { view.period = { kind: 'preset', preset: preset.id }; refresh(); },
+      }, preset.label))));
 }
 
 // ----------------------------------------------------------------- сводка

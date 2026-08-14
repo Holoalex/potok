@@ -113,16 +113,21 @@ button { cursor: pointer; border: none; background: none; padding: 0; }
 
 /* ------------------------------------------------------------- период */
 
-.period-bar {
+/* Чип «Период» стоит на месте, уезжают только сами периоды. */
+.period-bar { display: flex; align-items: center; gap: 12px; }
+
+.period-bar__scroll {
   display: flex;
   align-items: center;
   gap: 14px;
   overflow-x: auto;
   scrollbar-width: none;
   padding-bottom: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
-.period-bar::-webkit-scrollbar { display: none; }
+.period-bar__scroll::-webkit-scrollbar { display: none; }
 
 .period-chip {
   display: inline-flex;
@@ -214,7 +219,9 @@ button { cursor: pointer; border: none; background: none; padding: 0; }
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 14px 4px 6px;
+  padding: 14px 4px 7px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--separator);
   font-size: var(--size-caption);
   color: var(--text-2);
 }
@@ -240,14 +247,13 @@ button { cursor: pointer; border: none; background: none; padding: 0; }
 .tx-row + .tx-row { box-shadow: inset 0 1px 0 var(--separator); }
 .tx-row:active { background: var(--surface-2); }
 
+/* Глиф лежит прямо на белом, как в оригинале — без круглой подложки. */
 .tx-row__icon {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
   display: grid;
   place-items: center;
   grid-row: span 2;
-  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 .tx-row__title { font-size: var(--size-title); font-weight: 500; }
@@ -554,6 +560,180 @@ button { cursor: pointer; border: none; background: none; padding: 0; }
 }
 
 .search-field input { flex: 1; border: none; background: none; outline: none; color: var(--text); }
+
+/* ------------------------------------------------------------- отчёт */
+
+.report-controls { display: flex; align-items: center; gap: 8px; }
+
+.chart-toggle {
+  display: inline-flex;
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  gap: 2px;
+  box-shadow: var(--shadow);
+}
+
+.chart-toggle__item {
+  width: 42px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+}
+
+.chart-toggle__item.is-active { background: var(--surface-2); color: var(--text); }
+
+.dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 13px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-size: var(--size-caption);
+  font-weight: 500;
+  box-shadow: var(--shadow);
+}
+
+.dropdown svg { color: var(--text-2); }
+
+.chart-card {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.subtabs { display: flex; gap: 16px; justify-content: flex-end; padding: 0 4px; }
+
+.subtabs__item {
+  font-size: var(--size-caption);
+  color: var(--text-2);
+  padding: 2px 0 5px;
+  border-bottom: 2px solid transparent;
+}
+
+.subtabs__item.is-active { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+
+.donut-wrap { display: grid; place-items: center; padding: 4px 0; }
+.donut { width: min(300px, 100%); height: auto; }
+.donut__slice { transition: opacity 0.15s; }
+.donut__slice:hover { opacity: 0.85; }
+
+.donut__label {
+  fill: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  pointer-events: none;
+}
+
+/* столбцы */
+
+.bars { position: relative; height: calc(var(--bars-height) + 22px); }
+
+.bars__grid { position: absolute; inset: 0 0 22px 0; }
+
+.bars__grid-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--separator);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.bars__grid-line span { position: absolute; left: 0; top: -12px; }
+
+/* Столбцы отступают от левого края — там живут подписи оси. */
+.bars__cols {
+  position: absolute;
+  inset: 0 0 0 46px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bars__cols::-webkit-scrollbar { display: none; }
+
+.bars__col {
+  flex: 1 0 14px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  min-width: 14px;
+}
+
+.bars__stack {
+  width: 72%;
+  min-height: 2px;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.bars__seg { display: block; width: 100%; }
+.bars__tick { font-size: 10px; color: var(--text-3); height: 14px; }
+
+/* список долей */
+
+.share-list {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.share-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 6px 10px;
+  width: 100%;
+  padding: 11px 14px 9px;
+  text-align: left;
+}
+
+.share-row + .share-row { box-shadow: inset 0 1px 0 var(--separator); }
+.share-row:not(:disabled):active { background: var(--surface-2); }
+.share-row__icon { display: grid; place-items: center; }
+
+.share-row__sigma {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  color: var(--text-2);
+}
+
+.share-row__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-row--total .share-row__name { font-weight: 600; }
+
+.share-row__amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--amount-negative);
+}
+
+.share-row__track {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.share-row__track i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 
 /* ------------------------------------------------------------- прочее */
 

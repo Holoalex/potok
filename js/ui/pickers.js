@@ -17,12 +17,13 @@ function searchField(placeholder, onInput) {
   return { field, input };
 }
 
-/** Кружок с иконкой в цвете сущности. */
+/**
+ * Иконка в цвете сущности. Без круглой подложки — в оригинале глифы лежат
+ * прямо на белом, подложка сразу выдаёт чужой интерфейс.
+ */
 export const iconBadge = (name, color, size = 32) =>
-  h('span', {
-    class: 'list__icon',
-    style: { color, background: `color-mix(in srgb, ${color} 14%, transparent)` },
-  }, icon(name, { size: Math.round(size * 0.56) }));
+  h('span', { class: 'list__icon', style: { color } },
+    icon(name, { size: Math.round(size * 0.78), stroke: 1.9 }));
 
 // -------------------------------------------------------------- категории
 
