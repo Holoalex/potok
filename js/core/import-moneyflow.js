@@ -6,6 +6,7 @@
 // Перевод — одна строка: источник в основных колонках со знаком минус,
 // получатель в колонках «Перевод: …». Курс не хранится: обе суммы фактические.
 
+import { iconForAccount, iconForCategory } from './category-icons.js';
 import { toMinor } from './money.js';
 import {
   CATEGORY_COLORS, EXPENSE_TREE, INCOME_TREE,
@@ -79,6 +80,21 @@ function guessGroup(name) {
   return null;
 }
 
+/** Если счёт назван цветом — берём его, а не следующий из палитры по кругу. */
+const COLOR_WORDS = {
+  'красн': '#fc1037', 'зелён': '#30a044', 'зелен': '#30a044',
+  'жёлт': '#ffc463', 'желт': '#ffc463', 'син': '#1793df',
+  'фиолетов': '#7737e6', 'розов': '#f45f8e', 'оранжев': '#fd492d',
+};
+
+function colorFromName(name) {
+  const lower = (name || '').toLowerCase();
+  for (const [word, color] of Object.entries(COLOR_WORDS)) {
+    if (lower.includes(word)) return color;
+  }
+  return null;
+}
+
 /** Родитель листовой категории по дереву оригинала. */
 function findParent(tree, leaf) {
   for (const [parent, children] of Object.entries(tree)) {
@@ -132,7 +148,8 @@ export function buildImport(text, { baseCurrency = 'RUB' } = {}) {
         currency: currency || baseCurrency,
         groupId: getGroup(groupName),
         kind,
-        color: nextColor(),
+        icon: iconForAccount(name, kind),
+        color: colorFromName(name) ?? nextColor(),
         order: accounts.size,
       }));
     }
@@ -168,7 +185,10 @@ export function buildImport(text, { baseCurrency = 'RUB' } = {}) {
     );
     if (existing) return existing.id;
     const record = makeCategory({
-      name, type, parentId, color: nextColor(), order: categories.size,
+      name, type, parentId,
+      icon: iconForCategory(name),
+      color: nextColor(),
+      order: categories.size,
     });
     categories.set(key, record);
     return record.id;
@@ -248,7 +268,7 @@ export function buildImport(text, { baseCurrency = 'RUB' } = {}) {
   report.currencies = [...report.currencies];
 
   return {
-    accountGroups: [...groups.values()],
+    accountGroups: orderGroups([...groups.values()]),
     accounts: [...accounts.values()].map(({ currencyLocked, ...a }) => a),
     categories: [...categories.values()],
     payees: [...payees.values()],
