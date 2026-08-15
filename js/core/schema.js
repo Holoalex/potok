@@ -99,13 +99,18 @@ export const makeTransaction = (data = {}) => ({
   updatedAt: data.updatedAt ?? Date.now(),
 });
 
+/**
+ * Бюджет повторяющийся, а не привязанный к одному месяцу: в оригинале
+ * у него «Период повтора», и одни и те же лимиты видны на всех вкладках месяцев.
+ */
 export const makeBudget = (data = {}) => ({
   id: data.id || uid(),
   name: data.name || '',
-  month: data.month || '',                   // 'YYYY-MM'
+  period: data.period || 'month',            // month | week | year
   scope: data.scope || 'all',                // all | categories | tags
   categoryIds: data.categoryIds ? [...data.categoryIds] : [],
   tagIds: data.tagIds ? [...data.tagIds] : [],
+  accountIds: data.accountIds ? [...data.accountIds] : [],   // пусто — все счета
   limitMinor: data.limitMinor ?? 0,
   order: data.order ?? 0,
 });

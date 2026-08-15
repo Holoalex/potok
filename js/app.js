@@ -4,6 +4,7 @@ import * as store from './core/store.js';
 import { h, render } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { renderOperations } from './ui/operations.js';
+import { renderPlan } from './ui/plan.js';
 import { renderReport } from './ui/report.js';
 import { renderSettings } from './ui/settings.js';
 import { applyTheme } from './ui/theme.js';
@@ -11,18 +12,9 @@ import { applyTheme } from './ui/theme.js';
 const TABS = [
   { path: '/', label: 'Операции', glyph: 'list', render: renderOperations },
   { path: '/report', label: 'Отчёт', glyph: 'chart-pie', render: renderReport },
-  { path: '/plan', label: 'План', glyph: 'chart-column', render: stub('План') },
+  { path: '/plan', label: 'План', glyph: 'chart-column', render: renderPlan },
   { path: '/settings', label: 'Настройки', glyph: 'settings', render: renderSettings },
 ];
-
-function stub(name) {
-  return (root) => render(root,
-    h('header', { class: 'topbar' }, h('div', { class: 'topbar__title' }, h('span', {}, name))),
-    h('div', { class: 'empty' },
-      icon('chart-column', { size: 32 }),
-      h('div', {}, `Экран «${name}» ещё не собран`),
-      h('div', { class: 'muted' }, 'Следующий этап работы')));
-}
 
 const root = document.getElementById('app');
 let screen;

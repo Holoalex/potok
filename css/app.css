@@ -735,6 +735,119 @@ button { cursor: pointer; border: none; background: none; padding: 0; }
 
 .share-row__track i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 
+/* --------------------------------------------------------------- план */
+
+.plan-list {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.plan-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 12px 14px 10px;
+  text-align: left;
+}
+
+.plan-row + .plan-row { box-shadow: inset 0 1px 0 var(--separator); }
+.plan-row:active { background: var(--surface-2); }
+.plan-row__icon { display: grid; place-items: center; }
+.plan-row__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.plan-row__target {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--amount-positive);
+}
+
+.plan-row__target b { font-weight: 500; }
+.plan-row__target .is-over { color: #d92d20; }
+
+.plan-row__meta {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: var(--size-caption);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-row__left { color: var(--text); }
+
+.plan-row__track {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.plan-row__track i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.plan-row__track i.is-over { background: #d92d20; }
+
+.plan-row__percent {
+  grid-column: 1 / -1;
+  font-size: var(--size-caption);
+  color: var(--text-2);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-empty {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 22px 18px;
+  color: var(--text-2);
+  font-size: var(--size-caption);
+  text-align: center;
+}
+
+/* Не переносим на вторую строку — она сдвигает подпись поля вниз. */
+.swatches {
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+
+.swatches::-webkit-scrollbar { display: none; }
+
+.swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  flex: none;
+}
+
+.swatch.is-active { border-color: var(--text); }
+
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 8px;
+  padding: 0 var(--pad);
+}
+
+.icon-grid__item {
+  height: 56px;
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+}
+
+.icon-grid__item.is-active { box-shadow: inset 0 0 0 2px var(--accent); }
+
 /* ------------------------------------------------------------- прочее */
 
 .empty {

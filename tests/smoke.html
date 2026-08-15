@@ -67,6 +67,14 @@ window.__smoke = (async () => {
     const got = money.formatMoney(-90498, 'RUB');
     return got === `−${NBSP}904,98${NBSP}₽` ? got : `got «${got}»`;
   });
+  check('круглая сумма без «,00»', () => {
+    const got = money.formatMoney(25000000, 'RUB');
+    return got === `250${THIN}000${NBSP}₽` ? got : `got «${got}»`;
+  });
+  check('копейки сохраняются, когда они есть', () => {
+    const got = money.formatMoney(50825301, 'RUB');
+    return got === `508${THIN}253,01${NBSP}₽` ? got : `got «${got}»`;
+  });
   check('процент как «24,9 %»', () =>
     money.formatPercent(0.249) === `24,9${NBSP}%` ? true : `got «${money.formatPercent(0.249)}»`);
 

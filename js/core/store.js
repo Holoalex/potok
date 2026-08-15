@@ -4,7 +4,7 @@
 import * as db from './db.js';
 import { STORES } from './db.js';
 import { convert, decimalsOf, toMinor } from './money.js';
-import { DEFAULT_SETTINGS, makeTransaction } from './schema.js';
+import { DEFAULT_SETTINGS, makeAccount, makeBudget, makeTransaction } from './schema.js';
 
 export const state = {
   accountGroups: [],
@@ -280,6 +280,104 @@ export function timeSeries({ from, to, bucket = 'day', kind = 'expense', ...opti
   }
 
   return [...buckets.values()].sort((a, b) => a.at - b.at);
+}
+
+// ------------------------------------------------------- бюджеты и цели
+
+/** Потрачено по бюджету за отрезок. Возвраты уменьшают трату. */
+export function budgetSpent(budget, { from, to } = {}) {
+  const rows = selectTransactions({
+    from, to,
+    accountIds: budget.accountIds?.length ? budget.accountIds : null,
+  });
+
+  let spent = 0;
+  for (const t of rows) {
+    if (t.type === 'transfer') continue;
+    if (t.type !== 'expense' && t.type !== 'refund') continue;
+
+    if (budget.scope === 'categories') {
+      const rootId = rootCategoryOf(t.categoryId)?.id ?? null;
+      if (!budget.categoryIds.includes(t.categoryId) && !budget.categoryIds.includes(rootId)) continue;
+    } else if (budget.scope === 'tags') {
+      if (!t.tagIds.some((id) => budget.tagIds.includes(id))) continue;
+    }
+
+    const value = inBase(t);
+    if (value === null) continue;
+    spent += t.type === 'refund' ? -value : value;
+  }
+  return spent;
+}
+
+export const budgetProgress = (budget, range) => {
+  const spent = budgetSpent(budget, range);
+  const limit = budget.limitMinor || 0;
+  return {
+    spent,
+    limit,
+    left: limit - spent,
+    share: limit > 0 ? spent / limit : 0,
+    over: limit > 0 && spent > limit,
+  };
+};
+
+/**
+ * Прогресс цели. Накопленное — это остаток на счёте-копилке,
+ * так же как в оригинале: цель привязана к счёту, а не к отдельному счётчику.
+ */
+export function goalProgress(account) {
+  const saved = accountBalance(account.id);
+  const target = account.goalTargetMinor ?? 0;
+  const left = Math.max(target - saved, 0);
+
+  let monthsLeft = null;
+  let perMonth = null;
+  if (account.goalDate) {
+    const now = new Date();
+    const due = new Date(account.goalDate);
+    monthsLeft = Math.max(
+      (due.getFullYear() - now.getFullYear()) * 12 + (due.getMonth() - now.getMonth()),
+      0
+    );
+    if (monthsLeft > 0 && left > 0) perMonth = Math.round(left / monthsLeft);
+  }
+
+  return {
+    saved, target, left, monthsLeft, perMonth,
+    share: target > 0 ? Math.min(saved / target, 1) : 0,
+    done: target > 0 && saved >= target,
+  };
+}
+
+export const goalAccounts = () =>
+  state.accounts.filter((a) => a.kind === 'goal' && !a.archived).sort(byOrder);
+
+export async function saveBudget(data) {
+  const record = makeBudget({ ...data, order: data.order ?? state.budgets.length });
+  await db.put(STORES.budgets, record);
+  const index = state.budgets.findIndex((b) => b.id === record.id);
+  if (index === -1) state.budgets.push(record);
+  else state.budgets[index] = record;
+  emit('budgets');
+  return record;
+}
+
+export async function deleteBudget(id) {
+  await db.remove(STORES.budgets, id);
+  state.budgets = state.budgets.filter((b) => b.id !== id);
+  emit('budgets');
+}
+
+export async function saveAccount(data) {
+  const existing = data.id ? accountById(data.id) : null;
+  const record = makeAccount({ ...existing, ...data });
+  await db.put(STORES.accounts, record);
+  const index = state.accounts.findIndex((a) => a.id === record.id);
+  if (index === -1) state.accounts.push(record);
+  else state.accounts[index] = record;
+  emit('accounts');
+  return record;
 }
 
 // ------------------------------------------------------------------- запись

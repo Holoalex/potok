@@ -78,8 +78,10 @@ export function formatMoney(minor, code, options = {}) {
   const whole = Math.trunc(absolute / 10 ** digits);
   const fraction = absolute % 10 ** digits;
 
+  // Круглые суммы оригинал печатает без дробной части: «250 000 ₽», не
+  // «250 000,00 ₽». При этом «508 253,01 ₽» копейки сохраняет.
   let text = groupDigits(whole);
-  if (digits > 0) text += ',' + String(fraction).padStart(digits, '0');
+  if (digits > 0 && fraction !== 0) text += ',' + String(fraction).padStart(digits, '0');
 
   let prefix = '';
   if (negative) prefix = MINUS + NBSP;
