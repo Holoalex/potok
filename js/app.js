@@ -39,6 +39,15 @@ async function boot() {
   buildShell();
   window.addEventListener('hashchange', draw);
   draw();
+  registerServiceWorker();
+}
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (location.protocol === 'file:') return;   // из файла SW не работает — это нормально
+  navigator.serviceWorker.register('./sw.js').catch((error) => {
+    console.warn('Service worker не зарегистрирован:', error);
+  });
 }
 
 function buildShell() {

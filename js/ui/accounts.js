@@ -4,6 +4,7 @@
 import { formatMoney } from '../core/money.js';
 import * as store from '../core/store.js';
 import { frag, h, openSheet, sheetHeader, toast } from './dom.js';
+import { openAccountEditor, openGroupsEditor } from './editors.js';
 import { icon } from './icons.js';
 import { iconBadge } from './pickers.js';
 
@@ -59,19 +60,25 @@ export function openAccounts({ selectedIds = null } = {}) {
               const balance = store.accountBalance(account.id);
               const chosen = Array.isArray(selectedIds) && selectedIds.includes(account.id);
               return h('li', {},
-                h('button', {
-                  class: 'list__row' + (chosen ? ' is-active' : ''),
-                  type: 'button', onClick: () => sheet.close([account.id]),
-                },
-                  iconBadge(account.icon, account.color),
-                  h('span', { class: 'list__title' },
-                    account.name,
-                    account.kind === 'goal' && account.goalTargetMinor
-                      ? h('span', { class: 'list__sub' },
-                          ` из ${formatMoney(account.goalTargetMinor, account.currency)}`)
-                      : null),
-                  h('span', { class: 'list__value' },
-                    formatMoney(balance, account.currency, { sign: 'always' }))));
+                h('div', { class: 'list__row' + (chosen ? ' is-active' : '') },
+                  h('button', {
+                    class: 'list__main', type: 'button',
+                    onClick: () => sheet.close([account.id]),
+                  },
+                    iconBadge(account.icon, account.color),
+                    h('span', { class: 'list__title' },
+                      account.name,
+                      account.kind === 'goal' && account.goalTargetMinor
+                        ? h('span', { class: 'list__sub' },
+                            ` из ${formatMoney(account.goalTargetMinor, account.currency)}`)
+                        : null),
+                    h('span', { class: 'list__value' },
+                      formatMoney(balance, account.currency, { sign: 'always' }))),
+                  h('button', {
+                    class: 'round-btn round-btn--ghost', type: 'button',
+                    ariaLabel: `Изменить счёт ${account.name}`,
+                    onClick: () => openAccountEditor(account, () => handle.rebuild()),
+                  }, icon('pencil', { size: 15 }))));
             }))
           );
         });
@@ -79,11 +86,27 @@ export function openAccounts({ selectedIds = null } = {}) {
         const missing = store.missingRates();
 
         return frag(
-          sheetHeader({ title: 'Счета', onClose: () => sheet.close(undefined) }),
+          sheetHeader({
+            title: 'Счета',
+            onClose: () => sheet.close(undefined),
+            right: h('button', {
+              class: 'round-btn', type: 'button', ariaLabel: 'Добавить счёт',
+              onClick: () => openAccountEditor(null, () => handle.rebuild()),
+            }, icon('plus', { size: 18 })),
+          }),
           missing.length ? h('p', { class: 'muted', style: { margin: '0 16px 10px' } },
             `Нет курса для ${missing.join(', ')} — общий итог посчитать нельзя.`) : null,
           allRow,
           ...groups.filter(Boolean),
+          h('div', { class: 'stack' },
+            h('button', {
+              class: 'btn btn--ghost', type: 'button',
+              onClick: () => openAccountEditor(null, () => handle.rebuild()),
+            }, '+ Добавить счёт'),
+            h('button', {
+              class: 'btn btn--ghost', type: 'button',
+              onClick: () => openGroupsEditor(() => handle.rebuild()),
+            }, 'Группы счетов')),
           h('div', { style: { height: '24px' } })
         );
       },

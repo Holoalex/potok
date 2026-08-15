@@ -5,8 +5,11 @@ import { CURRENCIES, formatMoney } from '../core/money.js';
 import { buildImport, deriveOpeningBalances, looksLikeMoneyFlow } from '../core/import-moneyflow.js';
 import * as store from '../core/store.js';
 import { DEFAULT_SETTINGS } from '../core/schema.js';
+import { openAccounts } from './accounts.js';
 import { confirmDialog, frag, h, openSheet, render, sheetHeader, toast } from './dom.js';
+import { openCategoriesEditor } from './editors.js';
 import { icon } from './icons.js';
+import { openScreenParams } from './screen-params.js';
 import { applyTheme } from './theme.js';
 
 const THEMES = [
@@ -44,6 +47,17 @@ export function renderSettings(root, { refresh }) {
         `${Object.keys(s.rates).length - 1} задано`, () => openRates(refresh))),
       h('li', {}, navRow('settings', 'Тема',
         THEMES.find(([id]) => id === s.theme)?.[1] ?? '', () => openThemePicker(set)))),
+
+    h('div', { class: 'section-head' }, h('span', {}, 'Справочники')),
+    h('ul', { class: 'list list--flush' },
+      h('li', {}, navRow('tag', 'Категории',
+        `${store.topCategories('expense').length} расходных, ${store.topCategories('income').length} доходных`,
+        () => openCategoriesEditor(refresh))),
+      h('li', {}, navRow('wallet', 'Счета',
+        `${store.activeAccounts().length} активных`,
+        () => openAccounts().then(refresh))),
+      h('li', {}, navRow('sliders-horizontal', 'Параметры экрана', '',
+        () => openScreenParams(refresh)))),
 
     h('div', { class: 'section-head' }, h('span', {}, 'Данные')),
     h('ul', { class: 'list list--flush' },

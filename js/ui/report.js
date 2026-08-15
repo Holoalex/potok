@@ -9,8 +9,10 @@ import * as store from '../core/store.js';
 import { openAccounts } from './accounts.js';
 import { barChart, donutChart, shareRow } from './charts.js';
 import { frag, h, openSheet, render, sheetHeader } from './dom.js';
+import { hasFilter, matches as filterMatches, openFilterSheet } from './filter.js';
 import { icon } from './icons.js';
 import { iconBadge } from './pickers.js';
+import { openScreenParams } from './screen-params.js';
 
 const DIMENSIONS = [
   { id: 'category', label: 'Категории' },
@@ -37,7 +39,11 @@ export function renderReport(root, { refresh }) {
   const base = store.baseCurrency();
   const period = { kind: 'month', month: view.month };
   const { from, to } = rangeOf(period, store.state.settings.monthStartDay);
-  const filter = { from, to, accountIds: view.accountIds };
+  const filter = {
+    from, to,
+    accountIds: view.accountIds,
+    predicate: hasFilter() ? filterMatches : null,
+  };
 
   const rows = store.breakdown(view.dimension, { kind: view.kind, ...filter });
   const total = rows.reduce((sum, r) => sum + Math.max(r.amount, 0), 0);
@@ -50,9 +56,9 @@ export function renderReport(root, { refresh }) {
     topbar(scopeName, refresh),
     monthTabs(refresh),
     controls(refresh),
-    view.chart === 'donut'
-      ? donutBlock(rows, refresh)
-      : barsBlock(filter, refresh),
+    store.state.settings.showChart
+      ? (view.chart === 'donut' ? donutBlock(rows, refresh) : barsBlock(filter, refresh))
+      : null,
     totalsList(rows, total, base, refresh)
   );
 }
@@ -71,10 +77,15 @@ function topbar(scopeName, refresh) {
       icon('wallet', { size: 18 }),
       h('span', {}, scopeName),
       icon('chevron-down', { size: 16 })),
-    h('button', { class: 'round-btn', type: 'button', ariaLabel: 'Фильтр' },
-      icon('sliders-horizontal', { size: 18 })),
-    h('button', { class: 'round-btn', type: 'button', ariaLabel: 'Ещё' },
-      icon('ellipsis', { size: 18 })));
+    h('button', {
+      class: 'round-btn' + (hasFilter() ? ' round-btn--on' : ''),
+      type: 'button', ariaLabel: 'Фильтр',
+      onClick: () => openFilterSheet(refresh).then(refresh),
+    }, icon('sliders-horizontal', { size: 18 })),
+    h('button', {
+      class: 'round-btn', type: 'button', ariaLabel: 'Параметры экрана',
+      onClick: () => openScreenParams(refresh),
+    }, icon('ellipsis', { size: 18 })));
 }
 
 function monthTabs(refresh) {

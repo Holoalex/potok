@@ -4,7 +4,9 @@
 import * as db from './db.js';
 import { STORES } from './db.js';
 import { convert, decimalsOf, toMinor } from './money.js';
-import { DEFAULT_SETTINGS, makeAccount, makeBudget, makeTransaction } from './schema.js';
+import {
+  DEFAULT_SETTINGS, makeAccount, makeAccountGroup, makeBudget, makeCategory, makeTransaction,
+} from './schema.js';
 
 export const state = {
   accountGroups: [],
@@ -128,7 +130,9 @@ export function totalBalance(accounts = activeAccounts()) {
 // ------------------------------------------------------------------ выборки
 
 /** Операции за период с учётом настроек «переводы/корректировки как доходы». */
-export function selectTransactions({ from, to, accountIds, includeTransfers, includeAdjustments } = {}) {
+export function selectTransactions({
+  from, to, accountIds, includeTransfers, includeAdjustments, predicate,
+} = {}) {
   const withTransfers = includeTransfers ?? state.settings.transfersAsIncomeExpense;
   const withAdjustments = includeAdjustments ?? state.settings.adjustmentsAsIncomeExpense;
 
@@ -141,6 +145,8 @@ export function selectTransactions({ from, to, accountIds, includeTransfers, inc
       const hit = accountIds.includes(t.accountId) || accountIds.includes(t.toAccountId);
       if (!hit) return false;
     }
+    // Пользовательский фильтр приходит из интерфейса — ядро о нём не знает.
+    if (predicate && !predicate(t)) return false;
     return true;
   });
 }
@@ -371,13 +377,75 @@ export async function deleteBudget(id) {
 
 export async function saveAccount(data) {
   const existing = data.id ? accountById(data.id) : null;
-  const record = makeAccount({ ...existing, ...data });
+  const record = makeAccount({
+    ...existing, ...data,
+    order: data.order ?? existing?.order ?? state.accounts.length,
+  });
   await db.put(STORES.accounts, record);
   const index = state.accounts.findIndex((a) => a.id === record.id);
   if (index === -1) state.accounts.push(record);
   else state.accounts[index] = record;
   emit('accounts');
   return record;
+}
+
+export async function deleteAccount(id) {
+  await db.remove(STORES.accounts, id);
+  state.accounts = state.accounts.filter((a) => a.id !== id);
+  emit('accounts');
+}
+
+export async function saveAccountGroup(data) {
+  const record = { ...makeAccountGroup(data), id: data.id || makeAccountGroup().id };
+  await db.put(STORES.accountGroups, record);
+  const index = state.accountGroups.findIndex((g) => g.id === record.id);
+  if (index === -1) state.accountGroups.push(record);
+  else state.accountGroups[index] = record;
+  emit('accounts');
+  return record;
+}
+
+export async function deleteAccountGroup(id) {
+  // Счета не теряем — они просто остаются без группы.
+  const orphans = state.accounts.filter((a) => a.groupId === id);
+  for (const account of orphans) await saveAccount({ ...account, groupId: null });
+  await db.remove(STORES.accountGroups, id);
+  state.accountGroups = state.accountGroups.filter((g) => g.id !== id);
+  emit('accounts');
+}
+
+export async function saveCategory(data) {
+  const existing = data.id ? categoryById(data.id) : null;
+  const record = makeCategory({
+    ...existing, ...data,
+    order: data.order ?? existing?.order ?? state.categories.length,
+  });
+  await db.put(STORES.categories, record);
+  const index = state.categories.findIndex((c) => c.id === record.id);
+  if (index === -1) state.categories.push(record);
+  else state.categories[index] = record;
+  emit('categories');
+  return record;
+}
+
+export async function deleteCategory(id) {
+  // Подкатегории поднимаем на верхний уровень, операции отвязываем —
+  // ни одна запись не должна исчезнуть вместе со справочником.
+  for (const child of childrenOf(id)) await saveCategory({ ...child, parentId: null });
+
+  const affected = state.transactions.filter((t) => t.categoryId === id);
+  if (affected.length) {
+    const patched = affected.map((t) => ({ ...t, categoryId: null, updatedAt: Date.now() }));
+    await db.putMany(STORES.transactions, patched);
+    patched.forEach((p) => {
+      const index = state.transactions.findIndex((t) => t.id === p.id);
+      state.transactions[index] = p;
+    });
+  }
+
+  await db.remove(STORES.categories, id);
+  state.categories = state.categories.filter((c) => c.id !== id);
+  emit('categories');
 }
 
 // ------------------------------------------------------------------- запись

@@ -6,23 +6,28 @@ import * as store from '../core/store.js';
 import { openAccounts } from './accounts.js';
 import { frag, h, render } from './dom.js';
 import { openEntry } from './entry.js';
+import { apply as applyFilter, hasFilter, openFilterSheet, searchBar } from './filter.js';
 import { icon } from './icons.js';
-import { iconBadge } from './pickers.js';
+import { openScreenParams } from './screen-params.js';
 
 /** Состояние экрана живёт здесь: период и фильтр по счетам общие для сеанса. */
 export const view = {
   period: { kind: 'preset', preset: 'last30' },
   accountIds: null,     // null — все счета
-  query: '',
+  searching: false,
 };
 
 export function renderOperations(root, { refresh }) {
   const base = store.baseCurrency();
   const { from, to } = rangeOf(view.period, store.state.settings.monthStartDay);
-  const filter = { from, to, accountIds: view.accountIds };
+  const range = { from, to, accountIds: view.accountIds };
 
-  const rows = filterRows(store.selectTransactions(filter));
-  const { income, expense } = store.totals(filter);
+  const rows = applyFilter(store.selectTransactions(range));
+
+  // Сводка считается по тем же операциям, что видны в списке: иначе итог
+  // не сходится с тем, что человек читает глазами.
+  const income = sumOf(rows, 'income');
+  const expense = sumOf(rows, 'expense') - sumOf(rows, 'refund');
 
   const scopeName = view.accountIds
     ? store.accountById(view.accountIds[0])?.name ?? 'Счёт'
@@ -33,7 +38,9 @@ export function renderOperations(root, { refresh }) {
     : store.totalBalance();
 
   render(root,
-    topbar(scopeName, refresh),
+    view.searching
+      ? searchBar(refresh, () => { view.searching = false; refresh(); })
+      : topbar(scopeName, refresh),
     periodBar(refresh),
     summary({ income, expense, balance: income - expense, currentBalance, base }),
     h('div', { class: 'section-head' },
@@ -58,12 +65,19 @@ function topbar(scopeName, refresh) {
       icon('wallet', { size: 18 }),
       h('span', {}, scopeName),
       icon('chevron-down', { size: 16 })),
-    h('button', { class: 'round-btn', type: 'button', ariaLabel: 'Поиск' },
-      icon('search', { size: 18 })),
-    h('button', { class: 'round-btn', type: 'button', ariaLabel: 'Фильтр' },
-      icon('sliders-horizontal', { size: 18 })),
-    h('button', { class: 'round-btn', type: 'button', ariaLabel: 'Ещё' },
-      icon('ellipsis', { size: 18 })));
+    h('button', {
+      class: 'round-btn', type: 'button', ariaLabel: 'Поиск',
+      onClick: () => { view.searching = true; refresh(); },
+    }, icon('search', { size: 18 })),
+    h('button', {
+      class: 'round-btn' + (hasFilter() ? ' round-btn--on' : ''),
+      type: 'button', ariaLabel: 'Фильтр',
+      onClick: () => openFilterSheet(refresh).then(refresh),
+    }, icon('sliders-horizontal', { size: 18 })),
+    h('button', {
+      class: 'round-btn', type: 'button', ariaLabel: 'Параметры экрана',
+      onClick: () => openScreenParams(refresh),
+    }, icon('ellipsis', { size: 18 })));
 }
 
 function periodBar(refresh) {
@@ -99,16 +113,9 @@ function summary({ income, expense, balance, currentBalance, base }) {
 
 // ------------------------------------------------------------ список по дням
 
-function filterRows(rows) {
-  const query = view.query.trim().toLowerCase();
-  if (!query) return rows;
-  return rows.filter((t) => {
-    const category = store.categoryById(t.categoryId)?.name ?? '';
-    const payee = store.payeeById(t.payeeId)?.name ?? '';
-    const account = store.accountById(t.accountId)?.name ?? '';
-    return [t.note, category, payee, account].some((s) => s.toLowerCase().includes(query));
-  });
-}
+const sumOf = (rows, type) => rows
+  .filter((t) => t.type === type)
+  .reduce((sum, t) => sum + (store.inBase(t) ?? 0), 0);
 
 function groupByDay(rows, refresh) {
   const days = new Map();

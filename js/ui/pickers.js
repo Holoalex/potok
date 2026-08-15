@@ -189,6 +189,47 @@ function pickFromList({ title, items, currentId, iconName, allowEmpty = true }) 
 export const pickPayee = (currentId, title = 'Контрагент') =>
   pickFromList({ title, items: store.state.payees, currentId, iconName: 'user' });
 
+/** Множественный выбор из плоского списка — для фильтра. */
+export function pickMany({ title, items, selectedIds = [], iconName = 'tag' }) {
+  return new Promise((resolve) => {
+    const selected = new Set(selectedIds);
+    let query = '';
+
+    const sheet = openSheet({
+      size: 'tall',
+      build: (handle) => {
+        const visible = items.filter((item) => matches(item.name, query));
+        const { field } = searchField('Поиск', (value) => { query = value; handle.rebuild(); });
+
+        return frag(
+          sheetHeader({ title, onClose: () => sheet.close(undefined) }),
+          field,
+          h('ul', { class: 'list' }, visible.length
+            ? visible.map((item) => h('li', {},
+                h('button', {
+                  class: 'list__row' + (selected.has(item.id) ? ' is-active' : ''),
+                  type: 'button',
+                  onClick: () => {
+                    selected.has(item.id) ? selected.delete(item.id) : selected.add(item.id);
+                    handle.rebuild();
+                  },
+                },
+                  iconBadge(item.icon || iconName, item.color || 'var(--text-2)'),
+                  h('span', { class: 'list__title' }, item.name),
+                  selected.has(item.id) && h('span', { class: 'list__check' }, icon('check', { size: 18 })))))
+            : emptyRow('Ничего не найдено')),
+          h('div', { class: 'stack' },
+            h('button', {
+              class: 'btn btn--primary', type: 'button',
+              onClick: () => sheet.close([...selected]),
+            }, 'Готово'))
+        );
+      },
+      onClose: resolve,
+    });
+  });
+}
+
 export const pickPlace = (currentId) =>
   pickFromList({ title: 'Место', items: store.state.places, currentId, iconName: 'map-pin' });
 
