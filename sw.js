@@ -4,6 +4,8 @@ const CACHE = 'potok-v1';
 
 // На localhost правки должны быть видны сразу, иначе кэш отдаёт вчерашний код.
 // В бою наоборот: сначала кэш — приложение открывается мгновенно и без сети.
+let lastInstall = null;
+
 const DEV = ['localhost', '127.0.0.1', '[::1]'].includes(self.location.hostname);
 
 const SHELL = [
@@ -48,19 +50,42 @@ self.addEventListener('install', (event) => {
     // хранилищу кто-то обращается параллельно, и кэш молча остаётся пустым.
     // put перезаписывает и такого не устраивает. Строго по одному: addAll
     // роняет всю пачку из-за одного недоступного файла.
+    let ok = 0;
+    const failures = [];
     for (const url of SHELL) {
       try {
         const response = await fetch(new Request(url, { cache: 'reload' }));
-        if (response.ok) await cache.put(url, response);
-        else console.warn('[sw] пропущен', url, response.status);
+        if (!response.ok) { failures.push(`${url} → ${response.status}`); continue; }
+        await cache.put(url, response);
+        ok++;
       } catch (error) {
-        console.warn('[sw] не удалось закэшировать', url, error);
+        failures.push(`${url} → ${error.name}: ${error.message}`);
       }
     }
+    lastInstall = { ok, failed: failures.length, first: failures.slice(0, 3) };
 
     await self.skipWaiting();
   })());
 });
+
+// Диагностика: страница может спросить, что лежит в кэше. Console.log
+// service worker'а из вкладки не виден, а знать, собралась ли офлайн-копия,
+// нужно — на это опирается кнопка «готово к работе без сети».
+self.addEventListener('message', async (event) => {
+  if (event.data !== 'cache-status') return;
+  let cached = 0;
+  let error = null;
+  try {
+    const cache = await caches.open(CACHE);
+    cached = (await cache.keys()).length;
+  } catch (e) {
+    error = `${e.name}: ${e.message}`;
+  }
+  event.source?.postMessage({
+    type: 'cache-status', cache: CACHE, cached, expected: SHELL.length, error, lastInstall,
+  });
+});
+
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
