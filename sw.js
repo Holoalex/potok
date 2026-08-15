@@ -44,12 +44,15 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
 
-    // Строго по одному. addAll падает целиком из-за одного недоступного файла,
-    // а параллельные add() Chrome роняет с «Entry already exists»,
-    // и кэш молча остаётся пустым.
+    // fetch + put, а не add: add падает с «Entry already exists», если к тому же
+    // хранилищу кто-то обращается параллельно, и кэш молча остаётся пустым.
+    // put перезаписывает и такого не устраивает. Строго по одному: addAll
+    // роняет всю пачку из-за одного недоступного файла.
     for (const url of SHELL) {
       try {
-        await cache.add(new Request(url, { cache: 'reload' }));
+        const response = await fetch(new Request(url, { cache: 'reload' }));
+        if (response.ok) await cache.put(url, response);
+        else console.warn('[sw] пропущен', url, response.status);
       } catch (error) {
         console.warn('[sw] не удалось закэшировать', url, error);
       }
