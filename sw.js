@@ -1,6 +1,6 @@
 // Service worker: приложение целиком живёт в кэше и работает офлайн.
 
-const CACHE = 'potok-v1';
+const CACHE = 'potok-v2';
 
 // На localhost правки должны быть видны сразу, иначе кэш отдаёт вчерашний код.
 // В бою наоборот: сначала кэш — приложение открывается мгновенно и без сети.
@@ -53,10 +53,20 @@ self.addEventListener('install', (event) => {
     let ok = 0;
     const failures = [];
     for (const url of SHELL) {
+      const request = new Request(url, { cache: 'reload' });
       try {
-        const response = await fetch(new Request(url, { cache: 'reload' }));
+        const response = await fetch(request);
         if (!response.ok) { failures.push(`${url} → ${response.status}`); continue; }
-        await cache.put(url, response);
+
+        try {
+          await cache.put(request, response.clone());
+        } catch (putError) {
+          // Chrome умеет отвечать «Entry already exists» даже на первую запись.
+          // Сносим ключ и пишем заново — это лечит.
+          if (putError.name !== 'InvalidAccessError') throw putError;
+          await cache.delete(request);
+          await cache.put(request, response.clone());
+        }
         ok++;
       } catch (error) {
         failures.push(`${url} → ${error.name}: ${error.message}`);
